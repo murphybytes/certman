@@ -1,8 +1,12 @@
 package repository
 
 import (
+	"context"
 	"os"
 	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 // connStringEnv names the environment variable holding the test database's
@@ -33,4 +37,21 @@ func newTestDB(t *testing.T) *Certdb {
 
 func TestNew(t *testing.T) {
 	newTestDB(t)
+}
+
+func TestCertCrud(t *testing.T) {
+	db := newTestDB(t)
+	assert.NotNil(t, db) 
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel() 
+	id, err  := db.RegisterDomain(ctx, "foobar.com")
+	assert.Nil(t, err)
+	assert.NotEqual(t, id, 0)
+	cert, err := db.GetCertificateInfo(ctx, id)
+	assert.Nil(t, err)
+	assert.NotNil(t, cert)
+	assert.Equal(t, "foobar.com", cert.Domain)
+	assert.Nil(t, db.UnregisterDomain(ctx, id))
+	_, err = db.GetCertificateInfo(ctx, id)
+	assert.NotNil(t, err)
 }

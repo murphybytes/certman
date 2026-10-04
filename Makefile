@@ -75,6 +75,9 @@ test-db: ## Run repository tests against the ENV database
 	CERTDB_CONNECTION_STRING="sqlserver://$$1?database=$$2&fedauth=ActiveDirectoryDefault" \
 		go test -C functions -count=1 -v ./repository/...
 
+build-app: 
+	go build -C functions -o bin/app 
+
 db-build: ## Build the database project into a dacpac
 	dotnet build $(DB_PROJECT) -c Release
 
