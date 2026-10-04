@@ -1,0 +1,39 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"type": "func",
+			"label": "func: host start",
+			"command": "host start",
+			"problemMatcher": "$func-golang-watch",
+			"isBackground": true,
+			"options": {
+				"cwd": "${workspaceFolder}/functions"
+			}
+		},
+		{
+			"type": "func",
+			"label": "func: pack",
+			"command": "pack",
+			"options": {
+				"cwd": "${workspaceFolder}/functions"
+			}
+		},
+		{
+			"label": "sqlproj: Build db",
+			"type": "process",
+			"command": "dotnet",
+			"args": [
+				"build",
+				"/home/jam/go/src/github.com/murphybytes/certman/db/db.sqlproj"
+			],
+			"problemMatcher": "$sqlproj-problem-matcher",
+			"isBackground": true,
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"detail": "Builds the db SQL project"
+		}
+	]
+}

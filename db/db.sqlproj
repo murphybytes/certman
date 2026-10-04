@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build">
+  <Sdk Name="Microsoft.Build.Sql" Version="2.2.0" />
+  <PropertyGroup>
+    <Name>db</Name>
+    <ProjectGuid>{62D46D68-CF1B-481C-81B5-FF33F796D657}</ProjectGuid>
+    <DSP>Microsoft.Data.Tools.Schema.Sql.SqlAzureV12DatabaseSchemaProvider</DSP>
+    <ModelCollation>1033, CI</ModelCollation>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Entra group granted read/write access; set per environment at publish time
+         (e.g. /v:CertdbUsersGroup=grp_certdb_users_dev). No default, so a publish
+         without it fails instead of granting the wrong environment's group. -->
+    <SqlCmdVariable Include="CertdbUsersGroup" />
+  </ItemGroup>
+  <ItemGroup>
+    <PostDeploy Include="Script.PostDeployment.sql" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="db.publish.xml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="dbo" />
+    <Folder Include="dbo\Tables" />
+    <Folder Include="Security" />
+    <Folder Include="System" />
+    <Folder Include="System\Tables" />
+  </ItemGroup>
+  <Target Name="BeforeBuild">
+    <Delete Files="$(BaseIntermediateOutputPath)\project.assets.json" />
+  </Target>
+</Project>
