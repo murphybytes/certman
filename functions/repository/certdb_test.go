@@ -56,6 +56,13 @@ func registerTestDomain(ctx context.Context, t *testing.T, cdb *Certdb, domain s
 	return id
 }
 
+func getTestContext(t *testing.T) context.Context {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	t.Cleanup(cancel)
+	return ctx 
+}
+
 // randomDomain returns a random 12-character domain name, eight lowercase
 // letters followed by ".com" (e.g. "xyzabdef.com"), so tests don't collide
 // with each other or with leftover rows.
@@ -71,15 +78,68 @@ func randomDomain() string {
 func TestNew(t *testing.T) {
 	newTestDB(t)
 }
+func TestNotificationEmailsSimple(t *testing.T) {
+	ctx := getTestContext(t)
+	domain := randomDomain()
+	db := newTestDB(t)
+	id := registerTestDomain(ctx, t, db, domain, "m1@foo.com", "m2@foo.com")
+	n, err := db.GetCertificateNotifications(ctx, id)
+	assert.Nil(t, err)
+	assert.Len(t, n, 2)
+}
+
+// Emails are stored as parameters, so quotes and SQL in an address are saved
+// verbatim instead of breaking or altering the insert.
+func TestNotificationEmailsAreNotSQL(t *testing.T) {
+	ctx := getTestContext(t)
+	db := newTestDB(t)
+	emails := []string{
+		"o'brien@foo.com",
+		"x@foo.com'); DELETE FROM System.tbl_notification; --",
+	}
+	id := registerTestDomain(ctx, t, db, randomDomain(), emails...)
+	n, err := db.GetCertificateNotifications(ctx, id)
+	require.NoError(t, err)
+	stored := []string{}
+	for _, notification := range n {
+		stored = append(stored, notification.Email)
+	}
+	assert.ElementsMatch(t, emails, stored)
+}
+
+func TestNotificationEmails(t *testing.T) {
+	ctx := getTestContext(t)
+	db := newTestDB(t)
+	domain1 := randomDomain()
+	id1 := registerTestDomain(ctx, t, db, domain1, "m1@foo.com")
+	domain2 := randomDomain()
+	// same email can get notifications from different domains 
+	id2 := registerTestDomain(ctx, t, db, domain2, "m1@foo.com", "m3@foo.com")
+	n1, err := db.GetCertificateNotifications(ctx,id1)
+	assert.Nil(t,err)
+	assert.Len(t, n1, 1)
+	err = db.DeleteCertificateNotification(ctx,n1[0].ID)
+	assert.Nil(t, err) 
+	n1, err = db.GetCertificateNotifications(ctx,id1)
+	assert.Nil(t, err)
+	assert.Len(t, n1, 0)
+	cid1, err := db.AddCertificateNotification(ctx,id2, "m4@foo.com")
+	assert.Nil(t, err)
+	assert.NotEqual(t,cid1, 0 )
+	n2, err := db.GetCertificateNotifications(ctx,id2)
+	assert.Nil(t, err)
+	assert.Len(t, n2, 3)
+	// can't add email to same domain twice 
+	_, err = db.AddCertificateNotification(ctx,id2, "m4@foo.com")
+	assert.NotNil(t, err)
+}
 
 func TestFetchPending(t *testing.T) {
 	orderedDomain := randomDomain()
 	newDomain := randomDomain()
 	errorDomain := randomDomain()
 	db := newTestDB(t)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	ctx := getTestContext(t)
 	id := registerTestDomain(ctx, t, db, orderedDomain)
 	require.NoError(t, db.SetState(ctx, id, StateOrdered))
 	registerTestDomain(ctx, t, db, newDomain)
@@ -100,8 +160,7 @@ func TestFetchPending(t *testing.T) {
 
 func TestCertCrud(t *testing.T) {
 	db := newTestDB(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	ctx := getTestContext(t)
 	domain := randomDomain()
 	id := registerTestDomain(ctx, t, db, domain)
 	assert.NotEqual(t, int32(0), id)

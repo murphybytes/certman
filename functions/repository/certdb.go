@@ -14,10 +14,26 @@ import (
 
 const connectTimeout = 30 * time.Second
 
+// Store is the set of operations on the certman database. Certdb implements
+// it; depend on Store where a fake is useful in tests.
+type Store interface {
+	RegisterDomain(ctx context.Context, domainName string, emails []string) (int32, error)
+	UnregisterDomain(ctx context.Context, id int32) error
+	GetCertificateInfo(ctx context.Context, id int32) (*Certificate, error)
+	GetDomainsWithPendingCertificates(ctx context.Context) ([]Certificate, error)
+	SetState(ctx context.Context, id int32, state CertificateState) error
+	GetCertificateNotifications(ctx context.Context, certID int32) ([]Notification, error)
+	AddCertificateNotification(ctx context.Context, certID int32, email string) (int32, error)
+	DeleteCertificateNotification(ctx context.Context, notificationID int32) error
+	Close() error
+}
+
 // Certdb is a handle to the certman database. It is safe for concurrent use.
 type Certdb struct {
 	db *sqlx.DB
 }
+
+var _ Store = (*Certdb)(nil)
 
 // New opens a connection to the Azure SQL database described by connString
 // and verifies it is reachable. The server uses Entra-only authentication, so
@@ -46,10 +62,15 @@ func New(ctx context.Context, connString string) (*Certdb, error) {
 	return &Certdb{db: db}, nil
 }
 
+// RegisterDomain adds a certificate record for domainName in StateNew, along
+// with a notification for each address in emails, and returns the new
+// certificate's ID. The certificate and its notifications are inserted in one
+// transaction, so nothing is saved if any insert fails, including when the
+// domain is already registered.
 func (c *Certdb) RegisterDomain(ctx context.Context, domainName string, emails []string) (int32, error) {
 	tx, err := c.db.BeginTxx(ctx, &sql.TxOptions{})
 	if err != nil {
-		return 0, err 
+		return 0, err
 	}
 	defer tx.Rollback()
 
@@ -65,61 +86,70 @@ func (c *Certdb) RegisterDomain(ctx context.Context, domainName string, emails [
 		return 0, err
 	}
 
-	if len(emails) > 0 {
-		query = `
-			INSERT INTO System.tbl_notification (cert_id, email)
-			VALUES
-		`
-		for _, email := range emails {
-			query += fmt.Sprintf("(%d, '%s')\n", insertedID, email)
-		}
-
-		_, err = tx.ExecContext(ctx, query)
+	// Insert each email as a parameter, never as SQL text, so addresses can't
+	// inject SQL.
+	for _, email := range emails {
+		_, err = tx.ExecContext(
+			ctx,
+			"INSERT INTO System.tbl_notification (cert_id, email) VALUES (@certID, @email)",
+			sql.Named("certID", insertedID),
+			sql.Named("email", email),
+		)
 		if err != nil {
-			return 0, err 
+			return 0, fmt.Errorf("adding notification for %q: %w", email, err)
 		}
 	}
-	
+
 	err = tx.Commit()
-	return insertedID, err 
+	return insertedID, err
 }
 
-func (c *Certdb) GetCertificateNotifications(ctx context.Context, certID int32)([]Notification, error) {
+// GetCertificateNotifications returns the notifications for certificate
+// certID. It returns an empty result, not an error, if the certificate has none
+// or doesn't exist.
+func (c *Certdb) GetCertificateNotifications(ctx context.Context, certID int32) ([]Notification, error) {
 	query := `
 		SELECT id, email 
 		FROM System.tbl_notification
 		WHERE cert_id = @certID 
 	`
 	var results []Notification
-	err := c.db.SelectContext(ctx, &results, query, sql.Named("certID",certID))
-	return results, err  
+	err := c.db.SelectContext(ctx, &results, query, sql.Named("certID", certID))
+	return results, err
 }
 
+// DeleteCertificateNotification deletes notification notificationID. It
+// returns nil if no notification has that ID.
 func (c *Certdb) DeleteCertificateNotification(ctx context.Context, notificationID int32) error {
 	_, err := c.db.ExecContext(
 		ctx,
 		"DELETE FROM System.tbl_notification WHERE id = @id",
 		sql.Named("id", notificationID),
-		)
-	return err 
+	)
+	return err
 }
 
+// AddCertificateNotification adds email to the notifications for certificate
+// certID and returns the new notification's ID. It fails if the certificate
+// doesn't exist or already has a notification for email.
 func (c *Certdb) AddCertificateNotification(ctx context.Context, certID int32, email string) (int32, error) {
 	query := `
 		INSERT INTO System.tbl_notification (cert_id, email)
 		OUTPUT INSERTED.id
 		VALUES (@certID, @email)
 	`
-	var insertedID int32 
+	var insertedID int32
 
 	err := c.db.QueryRowxContext(
 		ctx,
 		query,
 		sql.Named("certID", certID), sql.Named("email", email),
 	).Scan(&insertedID)
-	return insertedID, err 
+	return insertedID, err
 }
 
+// GetDomainsWithPendingCertificates returns the certificates that still need
+// work: those in StateNew, StateExpiring, StateOrdered or StateValidated.
 func (c *Certdb) GetDomainsWithPendingCertificates(ctx context.Context) ([]Certificate, error) {
 	query := `
 		SELECT id, domain, state, created, modified 
@@ -164,6 +194,8 @@ func (c *Certdb) SetState(ctx context.Context, id int32, state CertificateState)
 	return nil
 }
 
+// GetCertificateInfo returns certificate id. It returns sql.ErrNoRows if no
+// certificate has that ID.
 func (c *Certdb) GetCertificateInfo(ctx context.Context, id int32) (*Certificate, error) {
 	var certInfo Certificate
 	err := c.db.GetContext(ctx,
@@ -174,6 +206,8 @@ func (c *Certdb) GetCertificateInfo(ctx context.Context, id int32) (*Certificate
 	return &certInfo, err
 }
 
+// UnregisterDomain deletes certificate id and, through the database's cascading
+// delete, its notifications. It returns nil if no certificate has that ID.
 func (c *Certdb) UnregisterDomain(ctx context.Context, id int32) error {
 	_, err := c.db.ExecContext(ctx,
 		"DELETE FROM System.tbl_cert WHERE id = @id",
