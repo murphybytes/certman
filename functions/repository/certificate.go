@@ -4,21 +4,21 @@ import (
 	"time"
 )
 
-type CertificateState int32 
+type CertificateState int32
 
 const (
-	StateNew  CertificateState = iota 
+	StateNew CertificateState = iota
 	StateOrdered
-	StateValidated 
+	StateValidated
 	StateComplete
-	StateExpired 
+	StateExpiring
 	StateError
 )
 
 type Certificate struct {
-	ID int32 `db:"id"`
-	Domain string `db:"domain"`
-	State CertificateState `db:"state"`
-	Created time.Time `db:"created"` 
-	Modified time.Time `db:"modified"`
+	ID       int32            `db:"id"`
+	Domain   string           `db:"domain"`
+	State    CertificateState `db:"state"`
+	Created  time.Time        `db:"created"`
+	Modified time.Time        `db:"modified"`
 }

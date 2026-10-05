@@ -9,7 +9,7 @@ import (
 
 	// Registers the "azuresql" driver, which supports Entra ID authentication.
 	// "github.com/microsoft/go-mssqldb/azuread"
-	
+
 	"github.com/jmoiron/sqlx"
 	_ "github.com/microsoft/go-mssqldb"
 	"github.com/microsoft/go-mssqldb/azuread"
@@ -30,13 +30,15 @@ type Certdb struct {
 //
 // ActiveDirectoryDefault uses the Azure CLI login locally and the managed
 // identity when running in Azure.
-func New(connString string) (*Certdb, error) {
+//
+// ctx bounds the connection check, which also gives up after connectTimeout.
+func New(ctx context.Context, connString string) (*Certdb, error) {
 	db, err := sqlx.Open(azuread.DriverName, connString)
 	if err != nil {
 		return nil, fmt.Errorf("opening database: %w", err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), connectTimeout)
+	ctx, cancel := context.WithTimeout(ctx, connectTimeout)
 	defer cancel()
 
 	if err := db.PingContext(ctx); err != nil {
@@ -47,7 +49,7 @@ func New(connString string) (*Certdb, error) {
 	return &Certdb{db: db}, nil
 }
 
-func (c *Certdb) RegisterDomain(ctx context.Context, domainName string) (int32,error) {
+func (c *Certdb) RegisterDomain(ctx context.Context, domainName string) (int32, error) {
 	query := `
 			INSERT INTO  System.tbl_cert (domain)
 			OUTPUT INSERTED.id 
@@ -57,28 +59,72 @@ func (c *Certdb) RegisterDomain(ctx context.Context, domainName string) (int32,e
 
 	err := c.db.QueryRowxContext(ctx, query, sql.Named("domain", domainName)).Scan(&insertedID)
 	if err != nil {
-		return 0, err 
+		return 0, err
 	}
-	return insertedID, nil 
+	return insertedID, nil
+}
+
+func (c *Certdb) GetDomainsWithPendingCertificates(ctx context.Context) ([]Certificate, error) {
+	//desiredStates := []CertificateState{StateNew, StateExpiring, StateOrdered, StateValidated}
+	query := `
+		SELECT id, domain, state, created, modified 
+		FROM System.tbl_cert
+		WHERE state IN (@p1, @p2, @p3, @p4)
+	`
+	var certs []Certificate
+	err := c.db.SelectContext(
+		ctx,
+		&certs,
+		query,
+		StateNew, StateExpiring, StateOrdered, StateValidated,
+	)
+
+	return certs, err
+}
+
+// SetState changes the state of certificate id and updates its modified time.
+// It returns an error wrapping sql.ErrNoRows if no certificate has that id.
+func (c *Certdb) SetState(ctx context.Context, id int32, state CertificateState) error {
+	query := `
+		UPDATE System.tbl_cert
+		SET state = @state, modified = SYSUTCDATETIME()
+		WHERE id = @id
+	`
+	result, err := c.db.ExecContext(
+		ctx,
+		query,
+		sql.Named("state", state),
+		sql.Named("id", id),
+	)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return fmt.Errorf("setting state of certificate %d: %w", id, sql.ErrNoRows)
+	}
+	return nil
 }
 
 func (c *Certdb) GetCertificateInfo(ctx context.Context, id int32) (*Certificate, error) {
 	var certInfo Certificate
-	err := c.db.GetContext(ctx, 
+	err := c.db.GetContext(ctx,
 		&certInfo,
 		"SELECT id, domain, state, created, modified FROM System.tbl_cert WHERE id = @id",
-		sql.Named("id",id),
-		)
-	return &certInfo, err 
+		sql.Named("id", id),
+	)
+	return &certInfo, err
 }
 
 func (c *Certdb) UnregisterDomain(ctx context.Context, id int32) error {
-			
-_, err := c.db.ExecContext(ctx, 
+	_, err := c.db.ExecContext(ctx,
 		"DELETE FROM System.tbl_cert WHERE id = @id",
 		sql.Named("id", id),
-		)
-	return err 
+	)
+	return err
 }
 
 // Close closes the database connection pool.
