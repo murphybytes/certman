@@ -41,9 +41,9 @@ func newTestDB(t *testing.T) *Certdb {
 // registerTestDomain registers domain, failing the test immediately if that
 // fails, and unregisters it when the test ends. Tests only remove the rows they
 // created, so they're safe to run against a shared database.
-func registerTestDomain(ctx context.Context, t *testing.T, cdb *Certdb, domain string) int32 {
+func registerTestDomain(ctx context.Context, t *testing.T, cdb *Certdb, domain string, emails ...string) int32 {
 	t.Helper()
-	id, err := cdb.RegisterDomain(ctx, domain)
+	id, err := cdb.RegisterDomain(ctx, domain, emails)
 	require.NoError(t, err, "registering %s", domain)
 	t.Cleanup(func() {
 		// The test's context may be done by now, so clean up with a fresh one.

@@ -1,5 +1,0 @@
-/home/jam/go/src/github.com/murphybytes/certman/db/bin/Debug/db.dacpac
-/home/jam/go/src/github.com/murphybytes/certman/db/obj/Debug/Model.xml
-/home/jam/go/src/github.com/murphybytes/certman/db/obj/Debug/refactor.xml
-/home/jam/go/src/github.com/murphybytes/certman/db/obj/Debug/postdeploy.sql
-/home/jam/go/src/github.com/murphybytes/certman/db/obj/Debug/predeploy.sql

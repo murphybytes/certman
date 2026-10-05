@@ -46,7 +46,13 @@ func New(ctx context.Context, connString string) (*Certdb, error) {
 	return &Certdb{db: db}, nil
 }
 
-func (c *Certdb) RegisterDomain(ctx context.Context, domainName string) (int32, error) {
+func (c *Certdb) RegisterDomain(ctx context.Context, domainName string, emails []string) (int32, error) {
+	tx, err := c.db.BeginTxx(ctx, &sql.TxOptions{})
+	if err != nil {
+		return 0, err 
+	}
+	defer tx.Rollback()
+
 	query := `
 			INSERT INTO  System.tbl_cert (domain)
 			OUTPUT INSERTED.id 
@@ -54,11 +60,64 @@ func (c *Certdb) RegisterDomain(ctx context.Context, domainName string) (int32, 
 	`
 	var insertedID int32
 
-	err := c.db.QueryRowxContext(ctx, query, sql.Named("domain", domainName)).Scan(&insertedID)
+	err = tx.QueryRowxContext(ctx, query, sql.Named("domain", domainName)).Scan(&insertedID)
 	if err != nil {
 		return 0, err
 	}
-	return insertedID, nil
+
+	if len(emails) > 0 {
+		query = `
+			INSERT INTO System.tbl_notification (cert_id, email)
+			VALUES
+		`
+		for _, email := range emails {
+			query += fmt.Sprintf("(%d, '%s')\n", insertedID, email)
+		}
+
+		_, err = tx.ExecContext(ctx, query)
+		if err != nil {
+			return 0, err 
+		}
+	}
+	
+	err = tx.Commit()
+	return insertedID, err 
+}
+
+func (c *Certdb) GetCertificateNotifications(ctx context.Context, certID int32)([]Notification, error) {
+	query := `
+		SELECT id, email 
+		FROM System.tbl_notification
+		WHERE cert_id = @certID 
+	`
+	var results []Notification
+	err := c.db.SelectContext(ctx, &results, query, sql.Named("certID",certID))
+	return results, err  
+}
+
+func (c *Certdb) DeleteCertificateNotification(ctx context.Context, notificationID int32) error {
+	_, err := c.db.ExecContext(
+		ctx,
+		"DELETE FROM System.tbl_notification WHERE id = @id",
+		sql.Named("id", notificationID),
+		)
+	return err 
+}
+
+func (c *Certdb) AddCertificateNotification(ctx context.Context, certID int32, email string) (int32, error) {
+	query := `
+		INSERT INTO System.tbl_notification (cert_id, email)
+		OUTPUT INSERTED.id
+		VALUES (@certID, @email)
+	`
+	var insertedID int32 
+
+	err := c.db.QueryRowxContext(
+		ctx,
+		query,
+		sql.Named("certID", certID), sql.Named("email", email),
+	).Scan(&insertedID)
+	return insertedID, err 
 }
 
 func (c *Certdb) GetDomainsWithPendingCertificates(ctx context.Context) ([]Certificate, error) {

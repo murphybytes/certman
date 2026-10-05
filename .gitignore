@@ -1,0 +1,3 @@
+# Database project build output (dacpac, intermediate files, db-script previews)
+db/bin/
+db/obj/

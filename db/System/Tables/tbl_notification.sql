@@ -1,9 +1,9 @@
-CREATE TABLE [System].[tbl_notification_list]
+CREATE TABLE [System].[tbl_notification]
 (
   [id] INT IDENTITY(1,1) PRIMARY KEY,
   [cert_id] INT NOT NULL,
   CONSTRAINT FK_email_cert FOREIGN KEY (cert_id)
-    REFERENCES System.tbl_cert(id),
+    REFERENCES System.tbl_cert(id) ON DELETE CASCADE,
   [email] NVARCHAR(255) NOT NULL,
   INDEX IX_email UNIQUE ([email], [cert_id])
 )
