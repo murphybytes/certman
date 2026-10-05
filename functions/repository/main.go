@@ -7,9 +7,6 @@ import (
 	"fmt"
 	"time"
 
-	// Registers the "azuresql" driver, which supports Entra ID authentication.
-	// "github.com/microsoft/go-mssqldb/azuread"
-
 	"github.com/jmoiron/sqlx"
 	_ "github.com/microsoft/go-mssqldb"
 	"github.com/microsoft/go-mssqldb/azuread"
@@ -65,7 +62,6 @@ func (c *Certdb) RegisterDomain(ctx context.Context, domainName string) (int32, 
 }
 
 func (c *Certdb) GetDomainsWithPendingCertificates(ctx context.Context) ([]Certificate, error) {
-	//desiredStates := []CertificateState{StateNew, StateExpiring, StateOrdered, StateValidated}
 	query := `
 		SELECT id, domain, state, created, modified 
 		FROM System.tbl_cert
