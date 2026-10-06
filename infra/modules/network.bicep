@@ -1,13 +1,15 @@
-// Virtual network for certman. Starts with a subnet for private endpoints;
-// add an integration subnet here when the function app is deployed.
+// Virtual network for certman: a subnet for private endpoints and one for the
+// function app's outbound vnet integration.
 
 param location string
 param vnetName string
 param vnetAddressPrefix string
 param privateEndpointsSubnetPrefix string
+param functionsSubnetPrefix string
 param tags object
 
 var privateEndpointsSubnetName = 'snet-private-endpoints'
+var functionsSubnetName = 'snet-functions'
 
 resource vnet 'Microsoft.Network/virtualNetworks@2024-05-01' = {
   name: vnetName
@@ -27,6 +29,21 @@ resource vnet 'Microsoft.Network/virtualNetworks@2024-05-01' = {
           privateEndpointNetworkPolicies: 'Disabled'
         }
       }
+      {
+        // Flex Consumption vnet integration requires this delegation.
+        name: functionsSubnetName
+        properties: {
+          addressPrefix: functionsSubnetPrefix
+          delegations: [
+            {
+              name: 'flex-consumption'
+              properties: {
+                serviceName: 'Microsoft.App/environments'
+              }
+            }
+          ]
+        }
+      }
     ]
   }
 }
@@ -34,3 +51,4 @@ resource vnet 'Microsoft.Network/virtualNetworks@2024-05-01' = {
 output vnetId string = vnet.id
 output vnetName string = vnet.name
 output privateEndpointsSubnetId string = resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, privateEndpointsSubnetName)
+output functionsSubnetId string = resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, functionsSubnetName)

@@ -4,6 +4,7 @@ param environmentName = 'dev'
 
 param vnetAddressPrefix = '10.10.0.0/16'
 param privateEndpointsSubnetPrefix = '10.10.1.0/24'
+param functionsSubnetPrefix = '10.10.2.0/24'
 
 // Public access stays on so developers can connect after adding a firewall
 // rule for their IP; Entra-only auth is still enforced.
@@ -28,3 +29,7 @@ param sqlAdminMemberUpns = [
   'murphybytes_gmail.com#EXT#@murphybytesgmail.onmicrosoft.com'
 ]
 param sqlUserMemberUpns = []
+
+// Function app scale-out limit and per-instance memory (512, 2048 or 4096 MB).
+param functionMaximumInstanceCount = 10
+param functionInstanceMemoryMB = 2048

@@ -26,6 +26,9 @@ param vnetAddressPrefix string
 @description('Address prefix for the private endpoints subnet.')
 param privateEndpointsSubnetPrefix string
 
+@description('Address prefix for the function app\'s vnet integration subnet.')
+param functionsSubnetPrefix string
+
 @description('Whether the SQL server accepts traffic from public networks (firewall rules still apply).')
 @allowed([
   'Enabled'
@@ -56,14 +59,23 @@ param sqlBackupStorageRedundancy string
 @description('User principal names (e.g. alice@contoso.com) of the members of the SQL admins group. This list replaces the group\'s membership.')
 param sqlAdminMemberUpns array = []
 
-@description('User principal names (e.g. bob@contoso.com) of the members of the SQL users group. This list replaces the group\'s membership.')
+@description('User principal names (e.g. bob@contoso.com) of the members of the SQL users group. This list replaces the group\'s membership; the function app\'s identity is always added.')
 param sqlUserMemberUpns array = []
+
+@description('Maximum number of instances the function app scales out to.')
+param functionMaximumInstanceCount int
+
+@description('Memory per function app instance in MB (512, 2048 or 4096).')
+param functionInstanceMemoryMB int
 
 var tags = {
   project: projectName
   environment: environmentName
   managedBy: 'bicep'
 }
+
+// Several resources need globally unique names, so add a suffix stable per resource group.
+var uniqueSuffix = uniqueString(rg.id)
 
 var sqlAdminsGroupName = 'grp_certdb_admins_${environmentName}'
 var sqlUsersGroupName = 'grp_certdb_users_${environmentName}'
@@ -121,7 +133,14 @@ resource sqlUsersGroup 'Microsoft.Graph/groups@v1.0' = {
   }
   members: {
     relationshipSemantics: 'replace'
-    relationships: [for (upn, i) in sqlUserMemberUpns: sqlUserMembers[i].id]
+    // The listed users plus the function app's managed identity, which the app
+    // signs in to the database as. Bicep can't concat a for-expression, so the
+    // loop runs one past the users and the last slot is the identity.
+    relationships: [
+      for i in range(0, length(sqlUserMemberUpns) + 1): i < length(sqlUserMemberUpns)
+        ? sqlUserMembers[i].id
+        : functionApp.outputs.identityPrincipalId
+    ]
   }
 }
 
@@ -132,6 +151,7 @@ module network 'modules/network.bicep' = {
     vnetName: 'vnet-${projectName}-${environmentName}'
     vnetAddressPrefix: vnetAddressPrefix
     privateEndpointsSubnetPrefix: privateEndpointsSubnetPrefix
+    functionsSubnetPrefix: functionsSubnetPrefix
     tags: tags
   }
 }
@@ -140,8 +160,7 @@ module sql 'modules/sql.bicep' = {
   scope: rg
   params: {
     location: location
-    // Server names are globally unique, so add a suffix stable per resource group.
-    serverName: 'sql-${projectName}-${environmentName}-${uniqueString(rg.id)}'
+    serverName: 'sql-${projectName}-${environmentName}-${uniqueSuffix}'
     databaseName: 'certdb'
     adminGroupName: sqlAdminsGroup.displayName
     adminGroupObjectId: sqlAdminsGroup.id
@@ -157,6 +176,26 @@ module sql 'modules/sql.bicep' = {
   }
 }
 
+module functionApp 'modules/functionApp.bicep' = {
+  scope: rg
+  params: {
+    location: location
+    functionAppName: 'func-${projectName}-${environmentName}-${uniqueSuffix}'
+    planName: 'plan-${projectName}-${environmentName}'
+    identityName: 'id-func-${projectName}-${environmentName}'
+    // Storage account names: 3-24 lowercase letters and digits.
+    storageAccountName: take('st${projectName}${environmentName}${uniqueSuffix}', 24)
+    logAnalyticsName: 'log-${projectName}-${environmentName}'
+    appInsightsName: 'appi-${projectName}-${environmentName}'
+    functionsSubnetId: network.outputs.functionsSubnetId
+    sqlServerFqdn: sql.outputs.serverFqdn
+    sqlDatabaseName: sql.outputs.databaseName
+    maximumInstanceCount: functionMaximumInstanceCount
+    instanceMemoryMB: functionInstanceMemoryMB
+    tags: tags
+  }
+}
+
 output resourceGroupName string = rg.name
 output vnetName string = network.outputs.vnetName
 output sqlServerName string = sql.outputs.serverName
@@ -164,3 +203,5 @@ output sqlServerFqdn string = sql.outputs.serverFqdn
 output sqlDatabaseName string = sql.outputs.databaseName
 output sqlAdminsGroupId string = sqlAdminsGroup.id
 output sqlUsersGroupId string = sqlUsersGroup.id
+output functionAppName string = functionApp.outputs.functionAppName
+output functionAppHostName string = functionApp.outputs.functionAppHostName

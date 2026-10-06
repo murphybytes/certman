@@ -4,6 +4,7 @@ param environmentName = 'prod'
 
 param vnetAddressPrefix = '10.20.0.0/16'
 param privateEndpointsSubnetPrefix = '10.20.1.0/24'
+param functionsSubnetPrefix = '10.20.2.0/24'
 
 // Only reachable through the private endpoint.
 param sqlPublicNetworkAccess = 'Disabled'
@@ -21,3 +22,7 @@ param sqlBackupStorageRedundancy = 'Geo'
 // added to the groups by hand are removed on the next deploy.
 param sqlAdminMemberUpns = []
 param sqlUserMemberUpns = []
+
+// Function app scale-out limit and per-instance memory (512, 2048 or 4096 MB).
+param functionMaximumInstanceCount = 40
+param functionInstanceMemoryMB = 2048

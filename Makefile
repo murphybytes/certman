@@ -41,7 +41,7 @@ DB_SQLPACKAGE_ARGS = /SourceFile:$(DB_DACPAC) \
 		/p:ScriptDatabaseOptions=False \
 		/v:CertdbUsersGroup=$(DB_USERS_GROUP)
 
-.PHONY: help infra-build infra-what-if infra-deploy infra-destroy test-db db-build db-script db-deploy
+.PHONY: help infra-build infra-what-if infra-deploy infra-destroy test-db db-build db-script db-deploy app-publish
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-16s %s\n", $$1, $$2}'
@@ -77,6 +77,15 @@ test-db: ## Run repository tests against the ENV database
 
 build-app: 
 	go build -C functions -o bin/app 
+
+# Looks up the function app name from the ENV deployment's outputs. Core Tools
+# builds the Go binary and packages it; local.settings.json isn't published,
+# since the app's settings come from infra/modules/functionApp.bicep.
+app-publish: ## Build and deploy the function app code to ENV
+	@app=$$(az deployment sub show --name $(DEPLOYMENT_NAME) \
+		--query properties.outputs.functionAppName.value -o tsv) && [ -n "$$app" ] \
+		|| { echo "No function app in the '$(DEPLOYMENT_NAME)' deployment; run 'make infra-deploy ENV=$(ENV)' first." >&2; exit 1; }; \
+	cd functions && func azure functionapp publish "$$app"
 
 db-build: ## Build the database project into a dacpac
 	dotnet build $(DB_PROJECT) -c Release
