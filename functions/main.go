@@ -2,14 +2,13 @@ package main
 
 import (
 	"context"
+	"functions/handler/http"
 	"functions/repository"
-  "functions/handler/http"
 	"log"
 	"os"
 
 	"github.com/azure/azure-functions-golang-worker/sdk"
 	"github.com/azure/azure-functions-golang-worker/worker"
-
 )
 
 // connStringSetting names the app setting holding the database connection
@@ -19,9 +18,6 @@ import (
 // Entra authentication: ActiveDirectoryDefault locally (your az login) and
 // ActiveDirectoryManagedIdentity in Azure.
 const connStringSetting = "CERTDB_CONNECTION_STRING"
-
-
-
 
 func main() {
 	connString := os.Getenv(connStringSetting)

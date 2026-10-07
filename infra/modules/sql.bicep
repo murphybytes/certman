@@ -33,6 +33,16 @@ param maxVCores int
 param minVCores string
 param autoPauseDelayMinutes int
 
+@description('Whether the database uses the Azure SQL Database free offer: 100,000 vCore seconds of serverless compute, 32 GB of data and 32 GB of backup per month, for up to 10 General Purpose databases per subscription. Azure cannot convert an existing database to the free offer, so this must be set when the database is first created.')
+param useFreeLimit bool = false
+
+@description('What happens when the free monthly limit runs out. AutoPause stops the database until the next calendar month at no cost, but caps the database at 4 vCores and 32 GB with local-redundant backups and 7-day PITR. BillOverage keeps it running and bills the excess at standard serverless rates, and is a one-way door: Azure will not let it revert to AutoPause. Ignored when useFreeLimit is false.')
+@allowed([
+  'AutoPause'
+  'BillOverage'
+])
+param freeLimitExhaustionBehavior string = 'AutoPause'
+
 @allowed([
   'Local'
   'Zone'
@@ -85,11 +95,15 @@ resource database 'Microsoft.Sql/servers/databases@2023-08-01' = {
     family: 'Gen5'
     capacity: maxVCores
   }
+  // freeLimitExhaustionBehavior is only sent when the free offer is on; Azure
+  // rejects it on a database that isn't using the free limit.
   properties: {
     autoPauseDelay: autoPauseDelayMinutes
     minCapacity: json(minVCores)
     requestedBackupStorageRedundancy: backupStorageRedundancy
     zoneRedundant: false
+    useFreeLimit: useFreeLimit
+    ...(useFreeLimit ? { freeLimitExhaustionBehavior: freeLimitExhaustionBehavior } : {})
   }
 }
 

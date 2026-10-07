@@ -56,6 +56,16 @@ param sqlAutoPauseDelayMinutes int
 ])
 param sqlBackupStorageRedundancy string
 
+@description('Whether the database uses the Azure SQL Database free offer: 100,000 vCore seconds, 32 GB of data and 32 GB of backup a month, for up to 10 General Purpose databases per subscription. Azure cannot convert an existing database to the free offer, so turning this on for a database that is already deployed has no effect.')
+param sqlUseFreeLimit bool = false
+
+@description('What happens when the free monthly limit runs out: AutoPause (stops until next month, no charge, but requires sqlMaxVCores <= 4 and sqlBackupStorageRedundancy Local) or BillOverage (stays up, excess billed, and cannot be switched back to AutoPause). Ignored when sqlUseFreeLimit is false.')
+@allowed([
+  'AutoPause'
+  'BillOverage'
+])
+param sqlFreeLimitExhaustionBehavior string = 'AutoPause'
+
 @description('User principal names (e.g. alice@contoso.com) of the members of the SQL admins group. This list replaces the group\'s membership.')
 param sqlAdminMemberUpns array = []
 
@@ -170,6 +180,8 @@ module sql 'modules/sql.bicep' = {
     minVCores: sqlMinVCores
     autoPauseDelayMinutes: sqlAutoPauseDelayMinutes
     backupStorageRedundancy: sqlBackupStorageRedundancy
+    useFreeLimit: sqlUseFreeLimit
+    freeLimitExhaustionBehavior: sqlFreeLimitExhaustionBehavior
     vnetId: network.outputs.vnetId
     privateEndpointsSubnetId: network.outputs.privateEndpointsSubnetId
     tags: tags

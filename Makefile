@@ -81,11 +81,14 @@ build-app:
 # Looks up the function app name from the ENV deployment's outputs. Core Tools
 # builds the Go binary and packages it; local.settings.json isn't published,
 # since the app's settings come from infra/modules/functionApp.bicep.
+# --go is required: Core Tools infers the language from local.settings.json,
+# which is gitignored, so without the flag a fresh clone fails with
+# "Can't determine project language from files".
 app-publish: ## Build and deploy the function app code to ENV
 	@app=$$(az deployment sub show --name $(DEPLOYMENT_NAME) \
 		--query properties.outputs.functionAppName.value -o tsv) && [ -n "$$app" ] \
 		|| { echo "No function app in the '$(DEPLOYMENT_NAME)' deployment; run 'make infra-deploy ENV=$(ENV)' first." >&2; exit 1; }; \
-	cd functions && func azure functionapp publish "$$app"
+	cd functions && func azure functionapp publish "$$app" --go
 
 db-build: ## Build the database project into a dacpac
 	dotnet build $(DB_PROJECT) -c Release

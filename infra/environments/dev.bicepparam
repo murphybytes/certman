@@ -22,6 +22,21 @@ param sqlMinVCores = '0.5'
 param sqlAutoPauseDelayMinutes = 60
 param sqlBackupStorageRedundancy = 'Local'
 
+// Azure SQL Database free offer: 100,000 vCore seconds, 32 GB of data and
+// 32 GB of backup a month, at no cost. AutoPause stops the database for the
+// rest of the calendar month once the allowance runs out rather than billing
+// the overage, so dev can never generate a bill. That option constrains the
+// database to at most 4 vCores with local-redundant backups and 7-day
+// point-in-time restore, which the settings above already satisfy -- raising
+// sqlMaxVCores past 4 or moving sqlBackupStorageRedundancy off Local will make
+// the deployment fail.
+//
+// Azure cannot convert an existing database to the free offer. If the dev
+// database is already deployed, it has to be dropped and recreated for this to
+// take effect.
+param sqlUseFreeLimit = true
+param sqlFreeLimitExhaustionBehavior = 'AutoPause'
+
 // Entra users (by user principal name) in this environment's SQL groups.
 // Deploying replaces each group's membership with these lists, so people
 // added to the groups by hand are removed on the next deploy.
